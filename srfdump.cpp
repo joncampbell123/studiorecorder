@@ -73,6 +73,111 @@ bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSourceFile *rfio) {
     return true;
 }
 
+/* SRF-II time does not necessarily transmit ALL parameters every packet.
+ * Sometimes only changes are transmitted.
+ *
+ * Foolishly, I didn't think to add a flag that says whether the whole or partial time is transmitted in that packet.
+ * You might even say there are no "keyframe" packets, except what you can guess. Doh. */
+struct SRF2_TimeCode {
+	int256					params[64];
+	bool					params_present[64] = {false};
+    bool                    time_available = false;
+
+    enum {
+        TC_TIME=0,
+        TC_RECTIME
+    };
+
+    int                     tc_type = TC_TIME;
+
+    SRF2_TimeCode(const int type) : tc_type(type) {
+    }
+
+    void clear(void) {
+        time_available = false;
+        for (unsigned int i=0;i < 64;i++) params_present[i] = false;
+    }
+
+    /* parameter indexes */
+    enum {
+        HOUR=0,                 // 24-hour format
+        MINUTE=1,
+        SECOND=2,
+        MILLISECOND=3,
+        HOUR12=4,               // 12-hour format
+        CHANNEL_ID=5,
+
+        YEAR=10,
+        MONTH=11,
+        DAY_OF_MONTH=12,
+        DAY_OF_WEEK=13,
+        AM_PM=14
+        /* 30-40 inclusive print as int
+         * 41-52 inclusive print as %02d
+         * 53-63 inclusive print as %03d */
+    };
+
+    bool take_packet(const SRF_PacketHeader &hdr) {
+        for (unsigned int x=0;x < 64;x++) {
+            if (hdr.srf_v2_params_present[x]) {
+                params[x] = hdr.srf_v2_params[x];
+                params_present[x] = true;
+            }
+        }
+
+        if (tc_type == TC_TIME) {
+            time_available =
+                params_present[HOUR] &&     params_present[MINUTE] &&
+                params_present[SECOND] &&   params_present[YEAR] &&
+                params_present[MONTH] &&    params_present[DAY_OF_MONTH];
+        }
+        else if (tc_type == TC_RECTIME) {
+            time_available =
+                params_present[HOUR] &&     params_present[MINUTE] &&
+                params_present[SECOND];
+        }
+
+        return time_available;
+    }
+
+    std::string raw_time_string(void) const {
+        std::string ret; /* I hope your C++ compiler converts the return into the && move operator */
+
+        if (time_available) {
+            char tmp[256];
+
+            /* NTS: Copy-construct to use get_int() without causing any change to the original */
+            memset(tmp,0,sizeof(tmp));
+            if (tc_type == TC_TIME) {
+                snprintf(tmp,sizeof(tmp)-1,"%04u-%02u-%02u %02u:%02u:%02u",
+                        int256(params[YEAR]).get_int(),
+                        int256(params[MONTH]).get_int(),
+                        int256(params[DAY_OF_MONTH]).get_int(),
+                        int256(params[HOUR]).get_int(),
+                        int256(params[MINUTE]).get_int(),
+                        int256(params[SECOND]).get_int());
+            }
+            else if (tc_type == TC_RECTIME) {
+                snprintf(tmp,sizeof(tmp)-1,"%02u:%02u:%02u",
+                        int256(params[HOUR]).get_int(),
+                        int256(params[MINUTE]).get_int(),
+                        int256(params[SECOND]).get_int());
+            }
+            ret = tmp;
+
+            if (params_present[MILLISECOND]) {
+                snprintf(tmp,sizeof(tmp)-1,".%03u",int256(params[MILLISECOND]).get_int());
+                ret += tmp;
+            }
+        }
+        else {
+            ret = "N/A";
+        }
+
+        return ret;
+    }
+};
+
 bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSourceBits *bfio) {
     BYTE i;
 
@@ -226,6 +331,9 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSource
 }
 
 int main(int argc,char **argv) {
+    SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
+    SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
+
     if (argc < 2) return 1;
 
     SRFIOSourceFile *r_fileio = new SRFIOSourceFile();      // file read access
@@ -288,6 +396,19 @@ int main(int argc,char **argv) {
                     }
                 }
                 printf("\n");
+
+                switch (hdr.srf2_chunk_id) {
+                    case SRF_V2_TIME:
+                        srf2_time.take_packet(/*&*/hdr);
+                        printf("        Time: %s\n",srf2_time.raw_time_string().c_str());
+                        break;
+                    case SRF_V2_RECTIME:
+                        srf2_rectime.take_packet(/*&*/hdr);
+                        printf("    Rec Time: %s\n",srf2_rectime.raw_time_string().c_str());
+                        break;
+                    default:
+                        break;
+                };
             }
             else {
                 printf("SRF: Unknown packet type (BUG?)\n");
