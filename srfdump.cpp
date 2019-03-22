@@ -1,7 +1,9 @@
 
+#include <signal.h>
 #include <stdio.h>
 #include <assert.h>
 #include <unistd.h>
+#include <endian.h>
 #include <fcntl.h>
 
 #include "global.h"
@@ -17,6 +19,13 @@
 #ifndef O_BINARY
 #define O_BINARY (0)
 #endif
+
+volatile int DIE = 0;
+
+void sigma(int x) {
+    (void)x;
+    if (++DIE >= 10) abort();
+}
 
 using namespace std;
 
@@ -998,8 +1007,12 @@ int main(int argc,char **argv) {
     }
     b_fileio->SetIOSource(r_fileio);
 
+    signal(SIGINT,sigma);
+    signal(SIGQUIT,sigma);
+    signal(SIGTERM,sigma);
+
     /* r_fileio have refilled the buffer already */
-    while (!r_fileio->is_source_depleted()) {
+    while (!DIE && !r_fileio->is_source_depleted()) {
         SRF_PacketHeader hdr;
 
         if (SRFReadPacketHeader(/*&*/hdr,r_fileio,b_fileio)) {
