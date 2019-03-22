@@ -837,8 +837,7 @@ private:
     int16_t                     cur_sample[2] = {0,0};
     int16_t                     next_sample[2] = {0,0};
     unsigned int                frac = 0;                   // frac / output_rate for interpolation
-    int16_t                     outbuffer[4096 * 2];
-    size_t                      outbuffer_pos = 0;
+    unsigned long               out_count = 0;
 private:
     int                         fd = -1;
 public:
@@ -852,6 +851,8 @@ public:
         if (fd < 0) {
             fd = open(path,O_WRONLY|O_BINARY|O_CREAT|O_TRUNC,0644);
             if (fd < 0) return false;
+
+            out_count = 0;
 
             unsigned char hdr[44];
 
@@ -893,14 +894,6 @@ public:
             output[c] = (int16_t)((int)cur_sample[c] + delta2);
         }
     }
-    void clear_outbuffer(void) {
-        outbuffer_pos = 0;
-        assert(output_channels <= 2);
-        for (unsigned int c=0;c < output_channels;c++) {
-            cur_sample[c] = 0;
-            next_sample[c] = 0;
-        }
-    }
     void finish_interpolate(size_t src_rate) {
         int16_t result[2];
 
@@ -923,6 +916,7 @@ public:
 
             assert(d <= (buf+sizeof(buf)));
             ::write(fd,buf,2 * output_channels);
+            out_count += 2 * output_channels;
         }
     }
     void load_interpolate_sample(int16_t *src,size_t src_channels) {
