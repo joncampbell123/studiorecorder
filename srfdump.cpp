@@ -14,6 +14,10 @@
 
 #include <string>
 
+#ifndef O_BINARY
+#define O_BINARY (0)
+#endif
+
 using namespace std;
 
 enum {
@@ -821,6 +825,156 @@ bool SRFAudioDecode(int16_t* &audio,uint32_t &audio_length,uint32_t &audio_chann
     return true;
 }
 
+class SRFChannel {
+public:
+    SRFChannel() { }
+    ~SRFChannel() { close_wav(); }
+    SRFChannel(const SRFChannel &x) = delete;
+    SRFChannel(const SRFChannel &&x) = delete;
+private:
+    unsigned int                output_rate = 48000;
+    unsigned int                output_channels = 2;
+    int16_t                     cur_sample[2] = {0,0};
+    int16_t                     next_sample[2] = {0,0};
+    unsigned int                frac = 0;                   // frac / output_rate for interpolation
+    int16_t                     outbuffer[4096 * 2];
+    size_t                      outbuffer_pos = 0;
+private:
+    int                         fd = -1;
+public:
+    bool open_wav(const unsigned int n) {
+        char tmp[64];
+
+        sprintf(tmp,"channel%u.wav",n);
+        return open_wav(tmp);
+    }
+    bool open_wav(const char *path) {
+        if (fd < 0) {
+            fd = open(path,O_WRONLY|O_BINARY|O_CREAT|O_TRUNC,0644);
+            if (fd < 0) return false;
+
+            unsigned char hdr[44];
+
+            memset(hdr,0,sizeof(hdr));
+
+            memcpy(hdr+0 ,"RIFF",4);
+            *((uint32_t*)(hdr+4)) = htole32(0xFFFFFFFFul); // dummy length
+            memcpy(hdr+8 ,"WAVE",4);
+
+            memcpy(hdr+12,"fmt ",4);
+            *((uint32_t*)(hdr+16)) = htole32(16);           // length of "fmt "
+
+            *((uint16_t*)(hdr+20)) = 1;                     // wFormatTag = WAVE_FORMAT_PCM
+            *((uint16_t*)(hdr+22)) = output_channels;       // nChannels
+            *((uint32_t*)(hdr+24)) = output_rate;           // nSamplesPerSec
+            *((uint32_t*)(hdr+28)) = output_rate * output_channels * 2;//nAvgBytesPerSec
+            *((uint16_t*)(hdr+32)) = output_channels * 2;   // nBlockAlign
+            *((uint16_t*)(hdr+34)) = 16;                    // wBitsPerSample
+
+            memcpy(hdr+36,"data",4);
+            *((uint32_t*)(hdr+40)) = htole32(0xFFFFFFFFul); // dummy length
+
+            ::write(fd,hdr,44);
+        }
+
+        return (fd >= 0);
+    }
+    void close_wav(void) {
+        if (fd >= 0) {
+            // TODO: Update RIFF header
+            close(fd);
+        }
+    }
+public:
+    void interpolate(int16_t *output) {
+        for (unsigned int c=0;c < output_channels;c++) {
+            int delta = (int)next_sample[c] - (int)cur_sample[c];
+            int delta2 = (int)(((long)delta * (long)frac) / (long)output_rate);
+            output[c] = (int16_t)((int)cur_sample[c] + delta2);
+        }
+    }
+    void clear_outbuffer(void) {
+        outbuffer_pos = 0;
+        assert(output_channels <= 2);
+        for (unsigned int c=0;c < output_channels;c++) {
+            cur_sample[c] = 0;
+            next_sample[c] = 0;
+        }
+    }
+    void finish_interpolate(size_t src_rate) {
+        int16_t result[2];
+
+        while (frac < output_rate) {
+            interpolate(result);
+            write_dst_sample(result);
+            frac += src_rate;
+        }
+    }
+    void write_dst_sample(int16_t *s) {
+        if (fd >= 0) {
+            unsigned char buf[2 * 2]; /* sizeof(int16_t) * 2 */
+            unsigned char *d = buf;
+
+            assert(output_channels <= 2);
+            for (unsigned int c=0;c < output_channels;c++) {
+                *d++ = (unsigned char)(s[c] & 0xFF);
+                *d++ = (unsigned char)(s[c] >> 8);
+            }
+
+            assert(d <= (buf+sizeof(buf)));
+            ::write(fd,buf,2 * output_channels);
+        }
+    }
+    void load_interpolate_sample(int16_t *src,size_t src_channels) {
+        for (unsigned int c=0;c < output_channels;c++) cur_sample[c] = next_sample[c];
+
+        if (src_channels == 1 && output_channels == 2) {
+            next_sample[0] = next_sample[1] = src[0];
+        }
+        else if (src_channels == 2 && output_channels == 1) {
+            next_sample[0] = (int16_t)(((int)src[0] + (int)src[1]) / 2);
+        }
+        else {
+            size_t c=0;
+
+            while (c < std::min((size_t)output_channels,src_channels)) {
+                next_sample[c] = src[c];
+                c++;
+            }
+            while (c < std::max((size_t)output_channels,src_channels)) {
+                next_sample[c] = 0;
+                c++;
+            }
+        }
+    }
+    int write(int16_t *src,size_t src_samples,size_t src_channels,size_t src_rate) {
+        int r = 0;
+
+        if (src_rate <= 0)
+            return 0;
+
+        assert(src_channels <= 2);
+        assert(output_channels <= 2);
+        while (src_samples > 0) {
+            finish_interpolate(src_rate);
+            if (frac >= output_rate) {
+                frac -= output_rate;
+                load_interpolate_sample(src,src_channels);
+                src += src_channels;
+                src_samples--;
+            }
+        }
+
+        return r;
+    }
+public:
+};
+
+/* this is more generous than SRFPLAY */
+#define MAX_CHANNELS 64
+
+SRFChannel      srf_channel[MAX_CHANNELS];
+
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
@@ -876,7 +1030,10 @@ int main(int argc,char **argv) {
                             uint32_t audio_rate = 0;
 
                             if (SRFAudioDecode(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
-                                // TODO
+                                if (ccn.channel_num < MAX_CHANNELS) {
+                                    srf_channel[ccn.channel_num].open_wav(ccn.channel_num);
+                                    srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
+                                }
                             }
 
                             if (audio) delete[] audio;
