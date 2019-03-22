@@ -400,11 +400,11 @@ int main(int argc,char **argv) {
                 switch (hdr.srf2_chunk_id) {
                     case SRF_V2_TIME:
                         srf2_time.take_packet(/*&*/hdr);
-                        printf("        Time: %s\n",srf2_time.raw_time_string().c_str());
+                        printf("       Time: %s\n",srf2_time.raw_time_string().c_str());
                         break;
                     case SRF_V2_RECTIME:
                         srf2_rectime.take_packet(/*&*/hdr);
-                        printf("    Rec Time: %s\n",srf2_rectime.raw_time_string().c_str());
+                        printf("   Rec Time: %s\n",srf2_rectime.raw_time_string().c_str());
                         break;
                     default:
                         break;
