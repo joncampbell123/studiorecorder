@@ -20,6 +20,224 @@ enum {
 };
 
 #define SRF1_TIMESTRING                 "TimeString"
+#define SRF1_CHANNELCONTENT             "ChannelContent"
+
+typedef struct {
+	char			name[512] = {0};
+	int				sample_rate = -1;
+	int				bps = -1;
+	int				channels = -1;
+	bool			monoflag = false;
+	bool			stereoflag = false;
+	bool			lr_split = false;
+	bool			mute = false;
+} COMMONSRF1AUDPARMS;
+
+/* I can't believe I allowed a critical part of the format to be so loose in syntax AND used a callback in this manner. */
+void ParseSRFAudParms(char *fmtparms,COMMONSRF1AUDPARMS *parmset,void (*parmcallback)(char *parm,int strlen,void *data),void *data)
+{
+	int i,j,o,pr,ou;
+	char parms[512];
+
+	j = strlen(fmtparms);
+	parmset->name[0]=0;
+	parmset->sample_rate = -1;
+	parmset->bps = -1;
+	parmset->channels = -1;
+	parmset->monoflag = 0;
+	parmset->stereoflag = 0;
+	parmset->lr_split = 0;
+	parmset->mute = 0;
+
+	for (i=0;i < j;) {
+		while (fmtparms[i] == ' ') i++;
+
+		o=0;
+		while (fmtparms[i] != ',' && fmtparms[i]) {
+			parms[o] = fmtparms[i];
+			i++;
+			o++;
+		}
+		if (fmtparms[i] == ',') i++;
+		parms[o]=0;
+		o--;
+
+// filter out whitespaces
+		while (o >= 0 && parms[o] == ' ') {
+			parms[o] = 0;
+			o--;
+		}
+		if (parms[o]) o++;
+		o = strlen(parms);
+
+// look at the tag
+		pr = 0;
+
+// name:?
+		if (!strnicmp(parms,"name:",5) && parmset->name[0] == 0 && !pr) {
+			strcpy(parmset->name,parms+5);
+			pr=1;
+		}
+
+// sample rate?
+		if (o >= 2) {
+			if (!strnicmp(parms + o + -2,"Hz",2) && parmset->sample_rate == -1 && !pr) {
+/* avoid confusion with "MHz" and "KHz" being used in the name field
+   (likely if the user was stupid enough to enter KHz and MHz somewhere
+	in the name field). Basically, if the digit before Hz is not a number,
+	ignore it. */
+				if (o >= 3) {
+					if (!isdigit(parms[o-3]))			ou = 0;
+					else								ou = atoi(parms);
+				}
+				else {
+					ou = atoi(parms);
+				}
+
+				pr=1;
+				if (ou > 0 && ou <= 192000) parmset->sample_rate=ou;
+			}
+		}
+
+// bits/sample?
+		if (o >= 3) {
+			if (!strnicmp(parms + o + -3,"bps",3) && parmset->bps == -1 && !pr) {
+				parmset->bps = atoi(parms);
+				pr=1;
+			}
+		}
+
+// mono tag?
+		if (!strcmpi(parms,"mono") && parmset->channels == -1 && !pr) {
+			parmset->channels=1;
+			parmset->monoflag=1;
+			pr=1;
+		}
+
+// stereo tag?
+		if (!strcmpi(parms,"stereo") && parmset->channels == -1 && !pr) {
+			parmset->channels=2;
+			parmset->stereoflag=1;
+			pr=1;
+		}
+
+// L-R split tag?
+		if (!strcmpi(parms,"LR-split") && !pr) {
+			parmset->lr_split = 1;
+			pr=1;
+		}
+
+// mute tag?
+		if (!strcmpi(parms,"mute") && !pr) {
+			parmset->mute=1;
+			pr=1;
+		}
+
+// okay, I don't know what this is, pass it down
+		if (!pr && parmcallback) {
+			parmcallback(parms,o,data);
+		}
+	}
+
+// LR-split alone means 2-channel stereo
+	if (parmset->channels == -1 && parmset->lr_split) {
+		parmset->channels = 2;
+	}
+}
+
+// audio, <name:xxx>, <sample rate>Hz, <mono | stereo>, <bits>bps, <unsigned|signed>, <Bendian|Lendian>, <mute>
+//
+// rules:
+// - the order of the parameters does not necessarily have to follow
+//   this order, excepting the "audio" tag
+//
+// - parameters are separated by commas
+//
+// - <sample rate> must be numeric, and is determined by the
+//   'Hz' suffix. It cannot be negative. If "Hz" is not preceeded
+//   by a number (i.e. MHz) it should not be processed as a sample
+//   rate value. To further avoid confusion all SRF recording
+//   software should take steps to prevent the user from entering
+//   'Hz' as any part of the name tag.
+//
+//  [added 5-30-2001 when problem cropped up recording SRF of Pat
+//   Cashman show, "KOMO AM 1000KHz" was entered in the name field
+//   and it was discovered afterwards that the SRF playback
+//   software had problems parsing the stream because of this]
+//
+// - <name:xxx> is optional. It give the audio channel a title to
+//   go by on playback. It is signified by beginning as "name:"
+//   and all characters up until the next comma are considered part
+//   of the name
+//
+// - mono/stereo parameters are optional, if non-existient, decoder
+//   should assume monual sound
+//
+//  [3-18-2002: Since the recording software has always added
+//   stereo/mono tags, and additional channel arrangements may
+//   be implemented in the future that are incompatible, it is
+//   now mandatory that either 'mono', 'stereo', or 'LR-split'
+//   exist as one of the descriptor parameters.
+//
+//   mono = 1-channel
+//   stereo = 2-channel stereophonic
+//   LR-split = if used alone, implies stereo 2-channel format.
+//              has no meaning when used with 'mono'.
+//
+//   The allowance of 'LR-split' to imply 'stereo' is meant to
+//   be a space-saving convencience since, in an SRF-I stream,
+//   the descriptor strings are moderately redundant throughout.
+//   However, this will cause problems with any version of our
+//   SRF player prior to v4.26 because they assume that the
+//   lack of the 'stereo' tag implies a monural format. Therefore
+//   SRF recording software should provide an option to write
+//   the backwards-compatible arrangement of LR-split]
+//
+// - <bits> must be numeric, and is determined by the 'bps' suffix
+//
+// - unsigned/signed tags are optional. if non-existient, decoder
+//   should assume unsigned
+//
+// - Bendian/Lendian tags are optional. if non-existient, decoder
+//   assume Big Endian byte order
+//
+// - The "mute" tag is not required. It's presence should indicate
+//   that the audio chunk was meant to be muted but was recorded
+//   anyway for posterity
+//
+// - format descriptor may not be longer than 512 characters
+
+/* -----structs and callback function for handling params specific
+        to this format's descriptor strings */
+typedef struct {
+	int			sign;
+	int			bendian;
+} SRF1PCMAUDPARMS;
+
+void srf_v1_interpret_audio__pc(char *parms,int strlen,void *data)
+{
+	SRF1PCMAUDPARMS *pa = (SRF1PCMAUDPARMS*)data;
+
+	pa->sign	= -1;
+	pa->bendian	= -1;
+
+// unsigned tag?
+	if (!strcmpi(parms,"unsigned") && pa->sign == -1) {
+		pa->sign=0;
+	}
+// signed tag?
+	if (!strcmpi(parms,"signed") && pa->sign == -1) {
+		pa->sign=1;
+	}
+// Lendian tag?
+	if (!strcmpi(parms,"Lendian") && pa->bendian == -1) {
+		pa->bendian = 0;
+	}
+// Bendian tag?
+	if (!strcmpi(parms,"Bendian") && pa->bendian == -1) {
+		pa->bendian = 1;
+	}
+}
 
 struct SRF1_TimeString {
     std::string             timestamp;
@@ -69,6 +287,76 @@ bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSource *rfio) {
      * Why? Why did I write it to do that??? */
     rfio->getbyte();
     rfio->getbyte();
+
+    return true;
+}
+
+struct SRF1_ChannelContentHeader {
+    WORD            channel_num = 0;
+    DWORD           length = 0;
+    std::string     raw_format_string;
+    std::string     typestr;
+    std::string     paramstr;
+
+    void clear(void) {
+        channel_num = 0;
+        length = 0;
+        raw_format_string.clear();
+        typestr.clear();
+        paramstr.clear();
+    }
+};
+
+bool SRFChannelContentHeader(SRF1_ChannelContentHeader &ccn,SRFIOSource *rfio) {
+    ccn.clear();
+
+    ccn.channel_num  =  (((unsigned char)rfio->getbyte()) << 8u);
+    ccn.channel_num +=    (unsigned char)rfio->getbyte();
+
+    ccn.length  =       (((unsigned char)rfio->getbyte()) << 24ul);
+    ccn.length +=       (((unsigned char)rfio->getbyte()) << 16ul);
+    ccn.length +=       (((unsigned char)rfio->getbyte()) <<  8ul);
+    ccn.length +=         (unsigned char)rfio->getbyte();
+
+    {
+        char c;
+
+        c = rfio->getbyte();
+        for (unsigned int i=0;c != 0 && i < 511;i++) {
+            ccn.raw_format_string += c;
+            c = rfio->getbyte();
+        }
+    }
+
+    // unused (once a checksum)
+    rfio->getbyte();
+    rfio->getbyte();
+
+    /* take the raw string, separate by commas. first one is type */
+    {
+        auto i = ccn.raw_format_string.begin();
+
+        for (;i != ccn.raw_format_string.end();i++) {
+            if ((*i) == ',') {
+                i++;
+                while (i != ccn.raw_format_string.end() && *i == ' ') i++;
+                break;
+            }
+
+            ccn.typestr += (*i);
+        }
+
+        for (;i != ccn.raw_format_string.end();i++)
+            ccn.paramstr += (*i);
+    }
+
+    //DEBUG
+    printf("Channel %u len %lu raw='%s' type='%s' fmt='%s'\n",
+        (unsigned int)ccn.channel_num,
+        (unsigned long)ccn.length,
+        ccn.raw_format_string.c_str(),
+        ccn.typestr.c_str(),
+        ccn.paramstr.c_str());
 
     return true;
 }
@@ -484,6 +772,13 @@ int main(int argc,char **argv) {
                          * Later on, Studio Recorder would record both SRF-I and SRF-II timestamps,
                          * before eventually dropping (in 2001) SRF-I timestamps entirely. */
                         printf("  Time: '%s'\n",ts.timestamp.c_str());
+                    }
+                }
+                else if (!strcasecmp(hdr.srf1_header.c_str(),SRF1_CHANNELCONTENT)) {
+                    SRF1_ChannelContentHeader ccn;
+
+                    if (SRFChannelContentHeader(/*&*/ccn,r_fileio)) {
+                        // TODO
                     }
                 }
             }
