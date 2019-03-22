@@ -52,7 +52,7 @@ public:
     }
 };
 
-bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSourceFile *rfio) {
+bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSource *rfio) {
     ts.clear();
 
     {
@@ -178,7 +178,7 @@ struct SRF2_TimeCode {
     }
 };
 
-bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSourceBits *bfio) {
+bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSource *rfio,SRFIOSourceBits *bfio) {
     BYTE i;
 
     hdr.clear();
