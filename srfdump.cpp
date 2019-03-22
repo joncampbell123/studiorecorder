@@ -4,6 +4,7 @@
 #include "global.h"
 #include "srfio.h"
 #include "maths.h"
+#include "int256.h"
 #include "srfiofile.h"
 #include "srfiobits.h"
 
@@ -25,6 +26,9 @@ public:
     std::string             srf1_header;        /* SRF-I header */
     DWORD                   srf2_chunk_id = 0;  /* SRF-II chunk id */
     DWORD                   srf2_chunk_length = 0;/* SRF-II chunk length */
+
+	int256					srf_v2_params[64];
+	bool					srf_v2_params_present[64] = {false};
 public:
     void clear(void) {
         type = 0;
