@@ -847,15 +847,20 @@ private:
     int16_t                     next_sample[2] = {0,0};
     unsigned int                frac = 0;                   // frac / output_rate for interpolation
     unsigned long               out_count = 0;
+    unsigned int                fragment = 0;
+    unsigned int                channel = 0;
 private:
     int                         fd = -1;
 public:
     bool open_wav(const unsigned int n) {
         char tmp[64];
 
-        sprintf(tmp,"channel%u.wav",n);
+        channel = n;
+
+        sprintf(tmp,"channel%ufrag%u.wav",n,fragment);
         return open_wav(tmp);
     }
+private:
     bool open_wav(const char *path) {
         if (fd < 0) {
             fd = open(path,O_WRONLY|O_BINARY|O_CREAT|O_TRUNC,0644);
@@ -889,6 +894,7 @@ public:
 
         return (fd >= 0);
     }
+public:
     void close_wav(void) {
         if (fd >= 0) {
             unsigned char buf[4];
@@ -907,6 +913,7 @@ public:
             ::write(fd,buf,4);
 
             close(fd);
+            fd = -1;
         }
     }
 public:
@@ -940,6 +947,12 @@ public:
             assert(d <= (buf+sizeof(buf)));
             ::write(fd,buf,2 * output_channels);
             out_count += 2 * output_channels;
+
+            if (out_count >= 0x10000) { /* try not to break the limits of .WAV */
+                close_wav();
+                fragment++;
+                open_wav(channel);
+            }
         }
     }
     void load_interpolate_sample(int16_t *src,size_t src_channels) {
