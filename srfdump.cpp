@@ -35,6 +35,10 @@ public:
         srf2_chunk_id = 0;
         srf2_chunk_length = 0;
     }
+    void reset_v2(void) {
+        for (unsigned int i=0;i < 64;i++)
+            srf_v2_params_present[i] = false;
+    }
 };
 
 bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSourceBits *bfio) {
@@ -134,6 +138,7 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSource
             hdr.srf2_chunk_length = length;
             hdr.srf2_chunk_id = chunk_id;
             hdr.type = SRF2_PACKET;
+            hdr.reset_v2();
 			return true;
 		}
 	}
