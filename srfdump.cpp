@@ -139,6 +139,53 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSource
             hdr.srf2_chunk_id = chunk_id;
             hdr.type = SRF2_PACKET;
             hdr.reset_v2();
+
+            {
+                int mbc,exp,sgn,mantissal,expl,par,chnk,shh;
+                char dat[32];
+
+                mbc=0;
+                // while encountering marker bits...
+                while (bfio->getbits(1) && mbc < 64) {
+                    mbc++;
+
+                    // read it from the stream
+                    sgn = bfio->getbits(1);				// sign (FIXME: Never USED???)
+                    mantissal = bfio->getbits(8)+1;		// mantissa length
+                    par = bfio->getbits(1);				// mantissa parity check
+                    if (par != paritysum(1,mantissal-1)) return false;
+
+                    // data mantissa
+                    memset(dat,0,32);
+
+                    shh = (mantissal+7)>>3;
+                    if (mantissal & 7) {
+                        dat[32 - shh] = bfio->getbits(mantissal & 7);
+                        shh--;
+                    }
+
+                    while (shh > 0) {
+                        dat[32 - shh] = bfio->getbits(8);
+                        shh--;
+                    }
+
+                    expl = bfio->getbits(3)+1;			// data exponent length
+                    par = bfio->getbits(1);				// data exponent length parity
+                    if (par != paritysum(1,expl-1)) return false;			// bad header
+                    exp = bfio->getbits(expl);			// data exponent
+                    chnk = bfio->getbits(6);				// "type code" (param idx)
+                    par = bfio->getbits(1);				// "type code" (param idx) parity check
+                    if (par != paritysum(1,chnk)) return false;			// bad header
+
+                    if (!hdr.srf_v2_params_present[chnk]) {				// double references not allowed
+                        hdr.srf_v2_params_present[chnk]=1;
+                        memcpy(&hdr.srf_v2_params[chnk].bytes[0],dat,32);
+                        hdr.srf_v2_params[chnk].shl(exp);
+                    }
+                }
+                bfio->getbits_reset();
+            }
+
 			return true;
 		}
 	}
@@ -169,6 +216,13 @@ int main(int argc,char **argv) {
             else if (hdr.type == SRF2_PACKET) {
                 printf("SRF-II packet chunkid=0x%08lx chunklen=0x%08lx\n",
                     (unsigned long)hdr.srf2_chunk_id,(unsigned long)hdr.srf2_chunk_length);
+                printf("   Contents: ");
+                for (unsigned int i=0;i < 64;i++) {
+                    if (hdr.srf_v2_params_present[i]) {
+                        printf("[%u] = %.3f ",i,hdr.srf_v2_params[i].get_double());
+                    }
+                }
+                printf("\n");
             }
             else {
                 printf("SRF: Unknown packet type (BUG?)\n");
