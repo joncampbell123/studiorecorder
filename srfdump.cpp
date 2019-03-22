@@ -3,6 +3,7 @@
 
 #include "global.h"
 #include "srfio.h"
+#include "maths.h"
 #include "srfiofile.h"
 #include "srfiobits.h"
 
@@ -88,6 +89,49 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSource
 
         hdr.type = SRF1_DISTORTION_PACKET;
 		return true;
+	}
+/* SRF-II packet? */
+	else if (i == 0x7E) {
+        DWORD chunk_id,length;
+        int parity,lol,pt;
+
+		i=bfio->getbyte(); if (i != 0x53)	return 0;
+		i=bfio->getbyte(); if (i != 0x52)	return 0;
+		i=bfio->getbyte(); if (i != 0x46)	return 0;
+		i=bfio->getbyte(); if (i != 0x2D)	return 0;
+		i=bfio->getbyte(); if (i != 0x32)	return 0;
+
+		parity = paritysum(1,0x7E);
+		parity = paritysum(parity,0x53);
+		parity = paritysum(parity,0x52);
+		parity = paritysum(parity,0x46);
+		parity = paritysum(parity,0x2D);
+		parity = paritysum(parity,0x32);
+// chunk id?
+		chunk_id  = ((DWORD)bfio->getbyte())<<24ul;
+		chunk_id |= ((DWORD)bfio->getbyte())<<16ul;
+		chunk_id |= ((DWORD)bfio->getbyte())<<8ul;
+		chunk_id |= ((DWORD)bfio->getbyte());
+		parity = paritysum(parity,chunk_id&0xFFul);
+		parity = paritysum(parity,(chunk_id>>8ul)&0xFFul);
+		parity = paritysum(parity,(chunk_id>>16ul)&0xFFul);
+		parity = paritysum(parity,(chunk_id>>24ul)&0xFFul);
+// length of length?
+		bfio->getbits_reset();
+		lol = bfio->getbits(5);
+		parity = paritysum(parity,lol);
+// length?
+		if (lol > 0)	length = bfio->getbits(lol);
+		else			length = 0;
+		parity = paritysum(parity,length);
+// parity?
+		pt = bfio->getbits(1);
+		if (pt == parity) {
+            hdr.srf2_chunk_length = length;
+            hdr.srf2_chunk_id = chunk_id;
+            hdr.type = SRF2_PACKET;
+			return true;
+		}
 	}
 
     return false;
