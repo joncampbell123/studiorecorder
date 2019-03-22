@@ -73,6 +73,10 @@ bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSource *rfio) {
     return true;
 }
 
+static constexpr const char * const srf2_months[12] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+static constexpr const char * const srf2_wdays[7] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
+static constexpr const char * const srf2_ampm[2] = {"AM","PM"};
+
 /* SRF-II time does not necessarily transmit ALL parameters every packet.
  * Sometimes only changes are transmitted.
  *
@@ -83,6 +87,11 @@ struct SRF2_TimeCode {
 	bool					params_present[64] = {false};
     bool                    time_available = false;
 
+    const std::string       format_string_default_rectime = "\x80:\x81:\x82.\x83";
+    const std::string       format_string_default_time = "\x80:\x81:\x82 \x8B \x8C, \x8A";
+    std::string             format_string_default;
+    std::string             format_string;
+
     enum {
         TC_TIME=0,
         TC_RECTIME
@@ -91,6 +100,18 @@ struct SRF2_TimeCode {
     int                     tc_type = TC_TIME;
 
     SRF2_TimeCode(const int type) : tc_type(type) {
+        switch (type) {
+            case TC_TIME:
+                format_string_default = format_string_default_time;
+                break;
+            case TC_RECTIME:
+                format_string_default = format_string_default_rectime;
+                break;
+            default:
+                break;
+        }
+
+        format_string = format_string_default;
     }
 
     void clear(void) {
@@ -117,7 +138,7 @@ struct SRF2_TimeCode {
          * 53-63 inclusive print as %03d */
     };
 
-    bool take_packet(const SRF_PacketHeader &hdr) {
+    bool take_packet(const SRF_PacketHeader &hdr,SRFIOSource *rfio=NULL/*for more data*/) {
         for (unsigned int x=0;x < 64;x++) {
             if (hdr.srf_v2_params_present[x]) {
                 params[x] = hdr.srf_v2_params[x];
@@ -137,7 +158,103 @@ struct SRF2_TimeCode {
                 params_present[SECOND];
         }
 
+        if (rfio != NULL) {
+            /* following the SRF-II packet header is a string up to len bytes
+             * with formatting codes so the recording software controls how it appears
+             * while params carry the raw data.
+             *
+             * Foolishly, the reading code will stop when it hits a zero byte which may
+             * occur before len bytes. Doh. */
+            bool repeat_last = false;
+            std::string nfmt;
+
+            for (unsigned int x=0;x < hdr.srf2_chunk_length;x++) {
+                char c = rfio->getbyte();
+
+                if (c == 0) {
+                    break;
+                }
+                else if (c == ((char)0xFF)) { // char literal
+                    x++; // it counts!
+                    c = rfio->getbyte();
+                    if (c != 0) nfmt += c;
+                }
+                else if (c == ((char)0xFE)) { // repeat last string
+                    repeat_last = true;
+                    break;
+                }
+                else {
+                    nfmt += c;
+                }
+            }
+
+            if (nfmt.empty()) {
+                /* The original software does not do this, but if the string came out empty,
+                 * go back to the original string. */
+                format_string = format_string_default;
+            }
+            else if (!repeat_last) {
+                format_string = nfmt;
+            }
+        }
+
         return time_available;
+    }
+
+    std::string formatted_time_string(void) const {
+        std::string ret; /* I hope your C++ compiler converts the return into the && move operator */
+
+        if (time_available) {
+            for (auto i=format_string.begin();i!=format_string.end();i++) {
+                if (((unsigned char)(*i)) & 0x80u) {
+                    if (!(((unsigned char)(*i)) & 0x40u)) {
+                        unsigned char idx = (((unsigned char)(*i)) & 0x3Fu);
+                        int dat = int256(params[idx]).get_int(); /* Copy construct to avoid const access error */
+                        char tmp[256];
+
+                        tmp[0] = 0;
+                        switch (idx) {
+                            case HOUR:          sprintf(tmp,"%d",dat); break;
+                            case MINUTE:        sprintf(tmp,"%02d",dat); break;
+                            case SECOND:        sprintf(tmp,"%02d",dat); break;
+                            case MILLISECOND:   sprintf(tmp,"%03d",dat); break;
+                            case HOUR12:        sprintf(tmp,"%d",dat); break;
+                            case CHANNEL_ID:    sprintf(tmp,"%d",dat); break;
+                            case YEAR:          sprintf(tmp,"%d",dat); break;
+                            case MONTH: {
+                                if (dat >= 1 && dat <= 12)  sprintf(tmp,"%s",srf2_months[dat-1]);
+                                else                        sprintf(tmp,"MONTH[%d]",dat);
+                            } break;
+                            case DAY_OF_MONTH:  sprintf(tmp,"%d",dat); break;
+                            case DAY_OF_WEEK: {
+                                if (dat >= 1 && dat <= 7)   sprintf(tmp,"%s",srf2_wdays[dat-1]);
+                                else                        sprintf(tmp,"WEEKDAY[%d]",dat);
+                            } break;
+                            case AM_PM: {
+                                if (dat >= 0 && dat <= 1)   sprintf(tmp,"%s",srf2_ampm[dat]);
+                                else                        sprintf(tmp,"AMPM[%d]",dat);
+                            } break;
+                            default:
+                                if (idx >= 53)              sprintf(tmp,"%04d",dat);
+                                else if (idx >= 41)         sprintf(tmp,"%02d",dat);
+                                else if (idx >= 30)         sprintf(tmp,"%d",dat);
+                                else                        sprintf(tmp,"PARAM%d[%d]",idx,dat);
+                                break;
+                        };
+
+                        ret += tmp;
+                    }
+
+                    /* code ignores bytes if both 0x80 and 0x40 (c >= 0xC0).
+                     * I probably meant to encode more information later, though I never did. */
+                }
+                else {
+                    ret += *i;
+                }
+            }
+        }
+
+        return ret;
     }
 
     std::string raw_time_string(void) const {
@@ -401,10 +518,12 @@ int main(int argc,char **argv) {
                     case SRF_V2_TIME:
                         srf2_time.take_packet(/*&*/hdr);
                         printf("       Time: %s\n",srf2_time.raw_time_string().c_str());
+                        printf("..Formatted: %s\n",srf2_time.formatted_time_string().c_str());
                         break;
                     case SRF_V2_RECTIME:
                         srf2_rectime.take_packet(/*&*/hdr);
                         printf("   Rec Time: %s\n",srf2_rectime.raw_time_string().c_str());
+                        printf("..Formatted: %s\n",srf2_rectime.formatted_time_string().c_str());
                         break;
                     default:
                         break;
