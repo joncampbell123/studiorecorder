@@ -22,7 +22,6 @@
 //#include "resource.h"
 
 #ifndef WIN32
-# define stristr strcasecmp
 # include <stdint.h>
 typedef uint32_t DWORD;
 typedef uint16_t WORD;

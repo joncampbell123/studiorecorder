@@ -18,6 +18,16 @@ enum {
     SRF2_PACKET=0x7E                    /* SRF-II packet (often informational) */
 };
 
+#define SRF1_TIMESTRING                 "TimeString"
+
+struct SRF1_TimeString {
+    std::string             timestamp;
+
+    void clear(void) {
+        timestamp.clear();
+    }
+};
+
 /* It's impossible to handle all SRF packets as a C++ class because how much data you handle
  * is packet-dependent. */
 class SRF_PacketHeader {
@@ -40,6 +50,27 @@ public:
             srf_v2_params_present[i] = false;
     }
 };
+
+bool SRFReadTimeString(SRF1_TimeString &ts,SRFIOSourceFile *rfio) {
+    ts.clear();
+
+    {
+        char c;
+
+        c = (char)rfio->getbyte();
+        for (unsigned int x=0;c != 0 && x < 256;x++) {
+            ts.timestamp += c;
+            c = (char)rfio->getbyte();
+        }
+    }
+
+    /* Then the parser reads two additional bytes.
+     * Why? Why did I write it to do that??? */
+    rfio->getbyte();
+    rfio->getbyte();
+
+    return true;
+}
 
 bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSourceFile *rfio,SRFIOSourceBits *bfio) {
     BYTE i;
@@ -212,6 +243,20 @@ int main(int argc,char **argv) {
         if (SRFReadPacketHeader(/*&*/hdr,r_fileio,b_fileio)) {
             if (hdr.type == SRF1_PACKET || hdr.type == SRF1_DISTORTION_PACKET) {
                 printf("SRF-I packet header='%s'\n",hdr.srf1_header.c_str());
+
+                if (!strcasecmp(hdr.srf1_header.c_str(),SRF1_TIMESTRING)) {
+                    SRF1_TimeString ts;
+
+                    if (SRFReadTimeString(/*&*/ts,r_fileio)) {
+                        /* SRF-I timestamp is just an ASCIIZ string.
+                         * The Studio Recorder software at the time always used 'HH:MM:SS  MM-DD-YYYY'
+                         *
+                         * HH is 24-hour format
+                         *
+                         * Example: '11:46:22  11-18-2000' */
+                        printf("  Time: '%s'\n",ts.timestamp.c_str());
+                    }
+                }
             }
             else if (hdr.type == SRF2_PACKET) {
                 printf("SRF-II packet chunkid=0x%08lx chunklen=0x%08lx\n",
