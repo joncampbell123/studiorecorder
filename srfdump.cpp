@@ -882,7 +882,21 @@ public:
     }
     void close_wav(void) {
         if (fd >= 0) {
-            // TODO: Update RIFF header
+            unsigned char buf[4];
+            unsigned long x1,x2;
+
+            x1 = out_count + 36;
+            x2 = out_count;
+            out_count = 0;
+
+            *((uint32_t*)buf) = htole32(x1);
+            ::lseek(fd,4,SEEK_SET); // RIFF:WAVE chunk
+            ::write(fd,buf,4);
+
+            *((uint32_t*)buf) = htole32(x2);
+            ::lseek(fd,40,SEEK_SET); // data chunk
+            ::write(fd,buf,4);
+
             close(fd);
         }
     }
