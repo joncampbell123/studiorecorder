@@ -350,14 +350,6 @@ bool SRFChannelContentHeader(SRF1_ChannelContentHeader &ccn,SRFIOSource *rfio) {
             ccn.paramstr += (*i);
     }
 
-    //DEBUG
-    printf("Channel %u len %lu raw='%s' type='%s' fmt='%s'\n",
-        (unsigned int)ccn.channel_num,
-        (unsigned long)ccn.length,
-        ccn.raw_format_string.c_str(),
-        ccn.typestr.c_str(),
-        ccn.paramstr.c_str());
-
     return true;
 }
 
@@ -778,7 +770,10 @@ int main(int argc,char **argv) {
                     SRF1_ChannelContentHeader ccn;
 
                     if (SRFChannelContentHeader(/*&*/ccn,r_fileio)) {
-                        // TODO
+                        printf("  Content: Channel #%u Length %lu bytes\n",(unsigned int)ccn.channel_num,(unsigned long)ccn.length);
+                        printf("  ....raw format: %s\n",ccn.raw_format_string.c_str());
+                        printf("  ..........type: %s\n",ccn.typestr.c_str());
+                        printf("  .........param: %s\n",ccn.paramstr.c_str());
                     }
                 }
             }
