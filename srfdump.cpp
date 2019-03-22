@@ -1,5 +1,8 @@
 
 #include <stdio.h>
+#include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "global.h"
 #include "srfio.h"
@@ -34,7 +37,7 @@ typedef struct {
 } COMMONSRF1AUDPARMS;
 
 /* I can't believe I allowed a critical part of the format to be so loose in syntax AND used a callback in this manner. */
-void ParseSRFAudParms(char *fmtparms,COMMONSRF1AUDPARMS *parmset,void (*parmcallback)(char *parm,int strlen,void *data),void *data)
+void ParseSRFAudParms(const char *fmtparms,COMMONSRF1AUDPARMS *parmset,void (*parmcallback)(char *parm,int strlen,void *data),void *data)
 {
 	int i,j,o,pr,ou;
 	char parms[512];
@@ -210,16 +213,18 @@ void ParseSRFAudParms(char *fmtparms,COMMONSRF1AUDPARMS *parmset,void (*parmcall
 /* -----structs and callback function for handling params specific
         to this format's descriptor strings */
 typedef struct {
-	int			sign;
-	int			bendian;
+	int			sign = -1;
+	int			bendian = -1;
 } SRF1PCMAUDPARMS;
 
 void srf_v1_interpret_audio__pc(char *parms,int strlen,void *data)
 {
 	SRF1PCMAUDPARMS *pa = (SRF1PCMAUDPARMS*)data;
 
-	pa->sign	= -1;
-	pa->bendian	= -1;
+    // By the way, these informative tags were written in all SRF files but never really paid attention to!
+    // I wanted to support different PCM formats, but all I implemented support for was 16-bit signed or
+    // 8-bit signed. SRFPLAY as compiled in 2002 did not support unsigned formats. Even the 12-bit format
+    // (hardly used!) was signed 12-bit!
 
 // unsigned tag?
 	if (!strcmpi(parms,"unsigned") && pa->sign == -1) {
@@ -727,6 +732,95 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSource *rfio,SRFIOSourceBits
     return false;
 }
 
+bool SRFAudioDecode(int16_t* &audio,uint32_t &audio_length,uint32_t &audio_channels,uint32_t &audio_rate,const SRF1_ChannelContentHeader &ccn,SRFIOSource *rfio) {
+    SRF1PCMAUDPARMS			pcmparms;
+    COMMONSRF1AUDPARMS		parms;
+
+    if (audio) delete[] audio;
+    audio = NULL;
+    audio_length = 0;
+    audio_channels = 0;
+    audio_rate = 0;
+
+    ParseSRFAudParms(ccn.paramstr.c_str(),&parms,srf_v1_interpret_audio__pc,&pcmparms);
+
+    // do we have enough info?
+    if (pcmparms.bendian == -1)		pcmparms.bendian = 1;		// Big Endian default
+    if (pcmparms.sign == -1)		pcmparms.sign = 0;			// Unsigned default
+    if (parms.sample_rate == -1)	return false;				// cannot work without sample rate
+    if (parms.bps == -1)			return false;				// cannot work without bits/sample
+    if (parms.sample_rate <= 1)     return false;
+
+    if (parms.channels < 1) parms.channels = 1;                 // in case mono/stereo is missing
+    if (parms.channels > 2) return false;                       // Studio Recorder was never used for anything beyond stereo
+
+    audio_rate = parms.sample_rate;
+    audio_channels = parms.channels;
+
+    if (parms.bps == 16)
+        audio_length = ccn.length / (2ul * (unsigned long)audio_channels);
+    else if (parms.bps == 8)
+        audio_length = ccn.length / (1ul * (unsigned long)audio_channels);
+    // TODO: Is there any SRF file that used the 12-bit format?
+
+    if (audio_length > 0) {
+        audio = new(std::nothrow) int16_t[audio_length * audio_channels];
+        if (audio == NULL) return false;
+
+        unsigned char buf[2/*bytes/sample*/ * 2/*channels*/];
+        int16_t *d = audio;
+        int samp;
+
+        if (parms.bps == 16) {
+            for (size_t i=0;i < audio_length;i++) {
+                unsigned char *s = buf;
+
+                rfio->getblock((char*)buf,2 * audio_channels);
+
+                for (size_t c=0;c < audio_channels;c++) {
+                    samp  =  (int)(*s++);
+                    samp += ((int)(*s++)) << 8;
+                    if (samp & 0x8000) samp -= 0x10000;
+                    *d++ = (int16_t)samp;
+                }
+
+                assert(s <= (buf+sizeof(buf)));
+            }
+        }
+        else if (parms.bps == 8) {
+            for (size_t i=0;i < audio_length;i++) {
+                unsigned char *s = buf;
+
+                rfio->getblock((char*)buf,1 * audio_channels);
+
+                for (size_t c=0;c < audio_channels;c++) {
+                    samp  = ((int)(*s++)) << 8;
+                    if (samp & 0x8000) samp -= 0x10000;
+                    *d++ = (int16_t)samp;
+                }
+
+                assert(s <= (buf+sizeof(buf)));
+            }
+        }
+        else {
+            return false;
+        }
+
+        assert(d <= (audio + (audio_channels * audio_length)));
+    }
+
+#if 0
+    printf("        PCM: bendian=%u sign=%u rate=%lu bps=%u ch=%u\n",
+        (unsigned int)pcmparms.bendian,
+        (unsigned int)pcmparms.sign,
+        (unsigned long)parms.sample_rate,
+        (unsigned int)parms.bps,
+        (unsigned int)parms.channels);
+#endif
+
+    return true;
+}
+
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
@@ -774,6 +868,19 @@ int main(int argc,char **argv) {
                         printf("  ....raw format: %s\n",ccn.raw_format_string.c_str());
                         printf("  ..........type: %s\n",ccn.typestr.c_str());
                         printf("  .........param: %s\n",ccn.paramstr.c_str());
+
+                        if (ccn.typestr == "audio") {
+                            int16_t *audio = NULL;
+                            uint32_t audio_length = 0;
+                            uint32_t audio_channels = 0;
+                            uint32_t audio_rate = 0;
+
+                            if (SRFAudioDecode(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
+                                // TODO
+                            }
+
+                            if (audio) delete[] audio;
+                        }
                     }
                 }
             }
