@@ -253,7 +253,10 @@ int main(int argc,char **argv) {
                          *
                          * HH is 24-hour format
                          *
-                         * Example: '11:46:22  11-18-2000' */
+                         * Example: '11:46:22  11-18-2000'
+                         *
+                         * Later on, Studio Recorder would record both SRF-I and SRF-II timestamps,
+                         * before eventually dropping (in 2001) SRF-I timestamps entirely. */
                         printf("  Time: '%s'\n",ts.timestamp.c_str());
                     }
                 }
