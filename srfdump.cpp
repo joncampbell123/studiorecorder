@@ -7,6 +7,7 @@
 #include "int256.h"
 #include "srfiofile.h"
 #include "srfiobits.h"
+#include "srf2idz.h"
 
 #include <string>
 
@@ -262,8 +263,24 @@ int main(int argc,char **argv) {
                 }
             }
             else if (hdr.type == SRF2_PACKET) {
-                printf("SRF-II packet chunkid=0x%08lx chunklen=0x%08lx\n",
-                    (unsigned long)hdr.srf2_chunk_id,(unsigned long)hdr.srf2_chunk_length);
+                const char *what = "?";
+
+                switch (hdr.srf2_chunk_id) {
+                    case SRF_V2_TIME:
+                        what = "Time";
+                        break;
+                    case SRF_V2_RECTIME:
+                        what = "Recording time";
+                        break;
+                    case SRF_V2_FX:
+                        what = "FX parameters";
+                        break;
+                    default:
+                        break;
+                };
+
+                printf("SRF-II packet chunkid=0x%08lx chunklen=0x%08lx %s\n",
+                    (unsigned long)hdr.srf2_chunk_id,(unsigned long)hdr.srf2_chunk_length,what);
                 printf("   Contents: ");
                 for (unsigned int i=0;i < 64;i++) {
                     if (hdr.srf_v2_params_present[i]) {
