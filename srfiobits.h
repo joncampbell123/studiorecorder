@@ -11,7 +11,7 @@
 class SRFIOSourceBits {
 public:
 						SRFIOSourceBits();
-						~SRFIOSourceBits();
+	virtual             ~SRFIOSourceBits();
 	void				SetIOSource(SRFIOSource *source);
 	void				getbits_reset();
 	int					getbits(int bits);

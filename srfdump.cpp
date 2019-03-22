@@ -6,7 +6,25 @@
 #include "srfiofile.h"
 #include "srfiobits.h"
 
+#include <string>
+
 using namespace std;
+
+enum {
+    SRF1_PACKET=0xAA,                   /* content */
+    SRF1_DISTORTION_PACKET=0xDA,        /* content, distorted in shareware versions on playback */
+    SRF2_PACKET=0x7E                    /* SRF-II packet (often informational) */
+};
+
+/* It's impossible to handle all SRF packets as a C++ class because how much data you handle
+ * is packet-dependent. */
+class SRF_PacketHeader {
+public:
+    unsigned char           type = 0;
+    std::string             srf1_header;        /* SRF-I header */
+    DWORD                   srf2_chunk_id = 0;  /* SRF-II chunk id */
+    DWORD                   srf2_chunk_length = 0;/* SRF-II chunk length */
+};
 
 int main(int argc,char **argv) {
     if (argc < 2) return 1;

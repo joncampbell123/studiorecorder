@@ -12,7 +12,7 @@
 class SRFIOSourceFile : public SRFIOSource {
 public:
 						SRFIOSourceFile();
-						~SRFIOSourceFile();
+	virtual             ~SRFIOSourceFile();
 	virtual int			getbyte();
 	virtual int			getblock(char *dat,int len);
 	virtual void		seek(DWORD pos);

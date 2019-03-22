@@ -75,6 +75,7 @@ void SRFIOSource::flush()
 
 int SRFIOSource::open(char *path)
 {
+    (void)path;
 	file_pos=0;
 	file_len=0;
 	return 1;

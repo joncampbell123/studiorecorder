@@ -11,7 +11,7 @@
 class SRFIOSource {
 public:
 						SRFIOSource();
-						~SRFIOSource();
+	virtual             ~SRFIOSource();
 	virtual int			getbyte();
 	virtual int			getblock(char *dat,int len);
 	virtual void		seek(DWORD pos);
