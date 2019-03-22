@@ -10,5 +10,5 @@ clean:
 	g++ -std=c++11 -c -o $@ $<
 
 srfdump: srfdump.o $(LIBS)
-	g++ -std=c++11 -o $@ $<
+	g++ -std=c++11 -o $@ $< $(LIBS)
 
