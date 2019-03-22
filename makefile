@@ -1,5 +1,5 @@
 PROGS=srfdump
-LIBS=
+LIBS=srfiobits.o srfio.o srfiofile.o
 
 all: $(PROGS)
 
