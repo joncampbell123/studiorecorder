@@ -1181,6 +1181,58 @@ std::string     out_wav_prefix;
 std::string     date_prefix;
 bool            date_in_prefix = false;
 
+bool srf2time_to_tm(struct tm &timestamp,const SRF2_TimeCode &tc) {
+    if (!tc.time_available)
+        return false;
+
+    timestamp.tm_year =     int256(tc.params[SRF2_TimeCode::YEAR]).get_int() - 1900;
+    timestamp.tm_mon =      int256(tc.params[SRF2_TimeCode::MONTH]).get_int() - 1;
+    timestamp.tm_mday =     int256(tc.params[SRF2_TimeCode::DAY_OF_MONTH]).get_int();
+    timestamp.tm_hour =     int256(tc.params[SRF2_TimeCode::HOUR]).get_int();
+    timestamp.tm_min =      int256(tc.params[SRF2_TimeCode::MINUTE]).get_int();
+    timestamp.tm_sec =      int256(tc.params[SRF2_TimeCode::SECOND]).get_int();
+    return true;
+}
+
+bool srf1time_to_tm(struct tm &timestamp,const std::string &tc) {
+    /* Example: '11:46:22  11-18-2000' */
+    const char *s = tc.c_str();
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_hour =     (int)strtol(s,(char**)(&s),10);
+
+    if (*s != ':') return false;
+    s++;
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_min =      (int)strtol(s,(char**)(&s),10);
+
+    if (*s != ':') return false;
+    s++;
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_sec =      (int)strtol(s,(char**)(&s),10);
+
+    while (*s == ' ') s++;
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_mon =      (int)strtol(s,(char**)(&s),10) - 1;
+
+    if (*s != '-') return false;
+    s++;
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_mday =     (int)strtol(s,(char**)(&s),10);
+
+    if (*s != '-') return false;
+    s++;
+
+    if (!isdigit(*s)) return false;
+    timestamp.tm_year =     (int)strtol(s,(char**)(&s),10) - 1900;
+
+    return true;
+}
+
 void help(void) {
     fprintf(stderr," -i input SRF file\n");
     fprintf(stderr," -p WAV prefix or '' to use filename\n");
@@ -1294,9 +1346,19 @@ int main(int argc,char **argv) {
 
         memset(&timestamp,0,sizeof(timestamp));
 
-        if (srf2_time.time_available) {
-        }
-        else if (!srf1_time.empty()) {
+        if (srf2_time.time_available)
+            timestamp_valid = srf2time_to_tm(/*&*/timestamp,srf2_time);
+        else if (!srf1_time.empty())
+            timestamp_valid = srf1time_to_tm(/*&*/timestamp,srf1_time);
+
+        if (timestamp_valid) {
+            printf("Time: %04u-%02u-%02u %02u:%02u:%02u\n",
+                timestamp.tm_year+1900,
+                timestamp.tm_mon+1,
+                timestamp.tm_mday,
+                timestamp.tm_hour,
+                timestamp.tm_min,
+                timestamp.tm_sec);
         }
 
         /* return to start */
