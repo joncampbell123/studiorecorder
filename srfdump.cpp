@@ -1265,7 +1265,7 @@ bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
         return true;
     if (cur_t.tm_mday != new_t.tm_mday)
         return true;
-    if ((cur_t.tm_hour/3) != (new_t.tm_hour/3)) /* cut every 3 hours */
+    if (cur_t.tm_hour != new_t.tm_hour)
         return true;
 
     return false;
