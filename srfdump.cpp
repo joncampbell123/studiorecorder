@@ -1239,6 +1239,22 @@ void help(void) {
     fprintf(stderr," -od Include date in WAV file\n");
 }
 
+std::string tm_to_date_prefix(struct tm &ts) {
+    std::string ret;
+    char tmp[512];
+
+    sprintf(tmp,"%04u%02u%02u-%02u%02u%02u",
+        ts.tm_year+1900,
+        ts.tm_mon+1,
+        ts.tm_mday,
+        ts.tm_hour,
+        ts.tm_min,
+        ts.tm_sec);
+    ret = tmp;
+
+    return ret;
+}
+
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
@@ -1358,6 +1374,9 @@ int main(int argc,char **argv) {
                 timestamp.tm_hour,
                 timestamp.tm_min,
                 timestamp.tm_sec);
+
+            date_prefix = tm_to_date_prefix(timestamp);
+            printf("Date prefix: %s\n",date_prefix.c_str());
         }
 
         /* return to start */
