@@ -885,7 +885,7 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
         if (audio == NULL) return false;
 
         int delta;
-        unsigned char code;
+        signed char code;
         int16_t *d = audio;
         unsigned char bit_scn;
         int sample[2];
@@ -931,7 +931,7 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
                 else {
                     for (unsigned int c=0;c < 2;c++) {
                         code = bit_scn&0x7;
-					    delta = ((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8);
+					    delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
                         if (bit_scn&0x8)            sample[c] -= delta;
                         else                        sample[c] += delta;
                         if (sample[c] < -32768)     sample[c] = -32768;
@@ -974,7 +974,7 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
                         const unsigned int c = 0;
 
                         code = bit_scn&0x7;
-					    delta = ((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8);
+					    delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
                         if (bit_scn&0x8)            sample[c] -= delta;
                         else                        sample[c] += delta;
                         if (sample[c] < -32768)     sample[c] = -32768;
