@@ -1244,6 +1244,8 @@ int main(int argc,char **argv) {
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
     std::string srf1_time;
     char *src_file = NULL;
+    struct tm timestamp;
+    bool timestamp_valid = false;
 
     for (int i=1;i < argc;) {
         char *a = argv[i++];
@@ -1307,6 +1309,8 @@ int main(int argc,char **argv) {
     signal(SIGQUIT,sigma);
     signal(SIGTERM,sigma);
 
+    memset(&timestamp,0,sizeof(timestamp));
+
     if (date_in_prefix) {
         unsigned int count = 0;
 
@@ -1340,11 +1344,6 @@ int main(int argc,char **argv) {
         printf("Pre-scan:\n");
         printf("   SRF-I time: %s\n",srf1_time.c_str());
         printf("  SRF-II time: %s\n",srf2_time.raw_time_string().c_str());
-
-        struct tm timestamp;
-        bool timestamp_valid = false;
-
-        memset(&timestamp,0,sizeof(timestamp));
 
         if (srf2_time.time_available)
             timestamp_valid = srf2time_to_tm(/*&*/timestamp,srf2_time);
