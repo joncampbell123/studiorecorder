@@ -1181,6 +1181,7 @@ std::string     out_wav_prefix;
 
 void help(void) {
     fprintf(stderr," -i input SRF file\n");
+    fprintf(stderr," -p WAV prefix or '' to use filename\n");
 }
 
 int main(int argc,char **argv) {
@@ -1196,6 +1197,9 @@ int main(int argc,char **argv) {
 
             if (!strcmp(a,"i")) {
                 src_file = argv[i++];
+            }
+            else if (!strcmp(a,"p")) {
+                out_wav_prefix = argv[i++];
             }
             else if (!strcmp(a,"h")) {
                 help();
