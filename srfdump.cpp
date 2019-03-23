@@ -1178,15 +1178,19 @@ public:
 
 SRFChannel      srf_channel[MAX_CHANNELS];
 std::string     out_wav_prefix;
+std::string     date_prefix;
+bool            date_in_prefix = false;
 
 void help(void) {
     fprintf(stderr," -i input SRF file\n");
     fprintf(stderr," -p WAV prefix or '' to use filename\n");
+    fprintf(stderr," -od Include date in WAV file\n");
 }
 
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
+    std::string srf1_time;
     char *src_file = NULL;
 
     for (int i=1;i < argc;) {
@@ -1204,6 +1208,9 @@ int main(int argc,char **argv) {
             else if (!strcmp(a,"h")) {
                 help();
                 return 1;
+            }
+            else if (!strcmp(a,"od")) {
+                date_in_prefix = true;
             }
             else {
                 fprintf(stderr,"Unknown switch %s\n",a);
@@ -1248,6 +1255,44 @@ int main(int argc,char **argv) {
     signal(SIGQUIT,sigma);
     signal(SIGTERM,sigma);
 
+    if (date_in_prefix) {
+        unsigned int count = 0;
+
+        /* pre-scan to gather the date and time from the stream */
+        srf2_time.clear();
+        while (!DIE && !r_fileio->is_source_depleted() && count < 1024) {
+            SRF_PacketHeader hdr;
+
+            if (SRFReadPacketHeader(/*&*/hdr,r_fileio,b_fileio)) {
+                if (hdr.type == SRF1_PACKET || hdr.type == SRF1_DISTORTION_PACKET) {
+                    if (!strcasecmp(hdr.srf1_header.c_str(),SRF1_TIMESTRING)) {
+                        SRF1_TimeString ts;
+
+                        if (SRFReadTimeString(/*&*/ts,r_fileio)) {
+                            if (srf1_time.empty())
+                                srf1_time = ts.timestamp;
+                        }
+                    }
+                }
+                else if (hdr.type == SRF2_PACKET) {
+                    if (hdr.srf2_chunk_id == SRF_V2_TIME) {
+                        if (!srf2_time.time_available)
+                            srf2_time.take_packet(/*&*/hdr);
+                    }
+                }
+
+                count++;
+            }
+        }
+
+        printf("Pre-scan:\n");
+        printf("   SRF-I time: %s\n",srf1_time.c_str());
+        printf("  SRF-II time: %s\n",srf2_time.raw_time_string().c_str());
+
+        /* return to start */
+        r_fileio->seek(0);
+    }
+
     /* r_fileio have refilled the buffer already */
     while (!DIE && !r_fileio->is_source_depleted()) {
         SRF_PacketHeader hdr;
@@ -1260,6 +1305,8 @@ int main(int argc,char **argv) {
                     SRF1_TimeString ts;
 
                     if (SRFReadTimeString(/*&*/ts,r_fileio)) {
+                        srf1_time = ts.timestamp;
+
                         /* SRF-I timestamp is just an ASCIIZ string.
                          * The Studio Recorder software at the time always used 'HH:MM:SS  MM-DD-YYYY'
                          *
@@ -1289,7 +1336,7 @@ int main(int argc,char **argv) {
 
                             if (SRFAudioDecode(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
                                 if (ccn.channel_num < MAX_CHANNELS) {
-                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix,ccn.channel_num);
+                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix + date_prefix,ccn.channel_num);
                                     srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
                                 }
                             }
@@ -1304,7 +1351,7 @@ int main(int argc,char **argv) {
 
                             if (SRFAudioDecodeIMAADPCM(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
                                 if (ccn.channel_num < MAX_CHANNELS) {
-                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix,ccn.channel_num);
+                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix + date_prefix,ccn.channel_num);
                                     srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
                                 }
                             }
