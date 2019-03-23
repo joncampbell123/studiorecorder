@@ -1289,6 +1289,16 @@ int main(int argc,char **argv) {
         printf("   SRF-I time: %s\n",srf1_time.c_str());
         printf("  SRF-II time: %s\n",srf2_time.raw_time_string().c_str());
 
+        struct tm timestamp;
+        bool timestamp_valid = false;
+
+        memset(&timestamp,0,sizeof(timestamp));
+
+        if (srf2_time.time_available) {
+        }
+        else if (!srf1_time.empty()) {
+        }
+
         /* return to start */
         r_fileio->seek(0);
     }
