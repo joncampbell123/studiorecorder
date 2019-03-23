@@ -13,6 +13,7 @@
 #include "srfiofile.h"
 #include "srfiobits.h"
 #include "srf2idz.h"
+#include "tbl_imaadpcm.h"
 
 #include <string>
 
@@ -834,6 +835,176 @@ bool SRFAudioDecode(int16_t* &audio,uint32_t &audio_length,uint32_t &audio_chann
     return true;
 }
 
+/* -----structs and callback function for handling params specific
+        to this format's descriptor strings */
+typedef struct {
+	bool		alternate_imaadpcm;
+} SRF1IMAADPCMAUDPARMS;
+
+void srf_v1_interpret_ima_adpcm_audio__pc(char *parms,int strlen,void *data)
+{
+	SRF1IMAADPCMAUDPARMS *pa = (SRF1IMAADPCMAUDPARMS*)data;
+
+// alternate IMA-ADPCM algorithm select?
+	if (!strcmpi(parms,"alt-adpcm")) {
+		pa->alternate_imaadpcm=1;
+	}
+}
+
+bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &audio_channels,uint32_t &audio_rate,const SRF1_ChannelContentHeader &ccn,SRFIOSource *rfio) {
+    SRF1IMAADPCMAUDPARMS	pcmparms;
+    COMMONSRF1AUDPARMS		parms;
+
+    if (audio) delete[] audio;
+    audio = NULL;
+    audio_length = 0;
+    audio_channels = 0;
+    audio_rate = 0;
+
+    ParseSRFAudParms(ccn.paramstr.c_str(),&parms,srf_v1_interpret_ima_adpcm_audio__pc,&pcmparms);
+
+    // do we have enough info?
+    if (parms.sample_rate == -1)	return false;				// cannot work without sample rate
+    if (parms.bps != 4)			    return false;				// cannot work without bits/sample
+    if (parms.sample_rate <= 1)     return false;
+
+    if (parms.channels < 1) parms.channels = 1;                 // in case mono/stereo is missing
+    if (parms.channels > 2) return false;                       // Studio Recorder was never used for anything beyond stereo
+
+    if (ccn.length <= (3ul * (unsigned long)audio_channels))
+        return false;
+
+    audio_rate = parms.sample_rate;
+    audio_channels = parms.channels;
+
+    if (parms.bps == 4)
+        audio_length = ((ccn.length - (3ul * (unsigned long)audio_channels)) * 2ul) / audio_channels;
+
+    if (audio_length > 0) {
+        audio = new(std::nothrow) int16_t[audio_length * audio_channels];
+        if (audio == NULL) return false;
+
+        int delta;
+        unsigned char code;
+        int16_t *d = audio;
+        unsigned char bit_scn;
+        int sample[2];
+        int idx[2];
+
+        for (unsigned int c=0;c < audio_channels;c++) {
+            int v;
+
+            v += ((int)((unsigned char)rfio->getbyte())) << 8;
+            v  = ((int)((unsigned char)rfio->getbyte()));
+            if (v & 0x8000) v -= 0x10000;
+
+            sample[c] = v;
+        }
+
+        for (unsigned int c=0;c < audio_channels;c++) {
+            idx[c] = ((int)((unsigned char)rfio->getbyte()));
+            if (idx[c] < 0) idx[c] = 0;
+            if (idx[c] > 88) idx[c] = 88;
+        }
+
+        if (audio_channels == 2) {
+            for (size_t i=0;i < audio_length;i++) {
+                bit_scn = rfio->getbyte();
+
+                /* L channel, then R channel */
+                if (pcmparms.alternate_imaadpcm) {
+                    for (unsigned int c=0;c < 2;c++) {
+                        code = bit_scn&0x7;
+                        delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
+                        if (bit_scn&0x8)            sample[c] -= delta;
+                        else                        sample[c] += delta;
+                        if (sample[c] < -32768)     sample[c] = -32768;
+                        if (sample[c] >  32767)     sample[c] =  32767;
+                        bit_scn >>= 4;
+                        idx[c] += imaadpcm_index_adj[code];
+                        if (idx[c] < 0) idx[c]=0;
+                        if (idx[c] > 88) idx[c]=88;
+
+                        *d++ = (int16_t)sample[c];
+                    }
+                }
+                else {
+                    for (unsigned int c=0;c < 2;c++) {
+                        code = bit_scn&0x7;
+					    delta = ((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8);
+                        if (bit_scn&0x8)            sample[c] -= delta;
+                        else                        sample[c] += delta;
+                        if (sample[c] < -32768)     sample[c] = -32768;
+                        if (sample[c] >  32767)     sample[c] =  32767;
+                        bit_scn >>= 4;
+                        idx[c] += imaadpcm_index_adj[code];
+                        if (idx[c] < 0) idx[c]=0;
+                        if (idx[c] > 88) idx[c]=88;
+
+                        *d++ = (int16_t)sample[c];
+                    }
+                }
+            }
+        }
+        else {
+            for (size_t i=0;i < audio_length;i += 2) {
+                bit_scn = rfio->getbyte();
+
+                /* L channel, then R channel */
+                if (pcmparms.alternate_imaadpcm) {
+                    for (unsigned int c2=0;c2 < 2;c2++) {
+                        const unsigned int c = 0;
+
+                        code = bit_scn&0x7;
+                        delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
+                        if (bit_scn&0x8)            sample[c] -= delta;
+                        else                        sample[c] += delta;
+                        if (sample[c] < -32768)     sample[c] = -32768;
+                        if (sample[c] >  32767)     sample[c] =  32767;
+                        bit_scn >>= 4;
+                        idx[c] += imaadpcm_index_adj[code];
+                        if (idx[c] < 0) idx[c]=0;
+                        if (idx[c] > 88) idx[c]=88;
+
+                        *d++ = (int16_t)sample[c];
+                    }
+                }
+                else {
+                    for (unsigned int c2=0;c2 < 2;c2++) {
+                        const unsigned int c = 0;
+
+                        code = bit_scn&0x7;
+					    delta = ((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8);
+                        if (bit_scn&0x8)            sample[c] -= delta;
+                        else                        sample[c] += delta;
+                        if (sample[c] < -32768)     sample[c] = -32768;
+                        if (sample[c] >  32767)     sample[c] =  32767;
+                        bit_scn >>= 4;
+                        idx[c] += imaadpcm_index_adj[code];
+                        if (idx[c] < 0) idx[c]=0;
+                        if (idx[c] > 88) idx[c]=88;
+
+                        *d++ = (int16_t)sample[c];
+                    }
+                }
+            }
+        }
+
+        assert(d <= (audio + (audio_channels * audio_length)));
+    }
+
+#if 0
+    printf("        PCM: bendian=%u sign=%u rate=%lu bps=%u ch=%u\n",
+        (unsigned int)pcmparms.bendian,
+        (unsigned int)pcmparms.sign,
+        (unsigned long)parms.sample_rate,
+        (unsigned int)parms.bps,
+        (unsigned int)parms.channels);
+#endif
+
+    return true;
+}
+
 class SRFChannel {
 public:
     SRFChannel() { }
@@ -1072,6 +1243,22 @@ int main(int argc,char **argv) {
 
                             if (audio) delete[] audio;
                         }
+                        else if (ccn.typestr == "imaadpcm audio") {
+                            int16_t *audio = NULL;
+                            uint32_t audio_length = 0;
+                            uint32_t audio_channels = 0;
+                            uint32_t audio_rate = 0;
+
+                            if (SRFAudioDecodeIMAADPCM(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
+                                if (ccn.channel_num < MAX_CHANNELS) {
+                                    srf_channel[ccn.channel_num].open_wav(ccn.channel_num);
+                                    srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
+                                }
+                            }
+
+                            if (audio) delete[] audio;
+                        }
+ 
                     }
                 }
             }

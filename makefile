@@ -1,5 +1,5 @@
 PROGS=srfdump
-LIBS=srfiobits.o srfio.o srfiofile.o maths.o int256.o
+LIBS=srfiobits.o srfio.o srfiofile.o maths.o int256.o tbl_imaadpcm.o
 CXXFLAGS=-std=c++11 -Wall -Wextra -pedantic
 
 all: $(PROGS)
