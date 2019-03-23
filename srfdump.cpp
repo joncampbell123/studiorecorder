@@ -884,8 +884,8 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
         audio = new(std::nothrow) int16_t[audio_length * audio_channels];
         if (audio == NULL) return false;
 
+        int code;
         int delta;
-        signed char code;
         int16_t *d = audio;
         unsigned char bit_scn;
         int sample[2];
