@@ -894,8 +894,8 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
         for (unsigned int c=0;c < audio_channels;c++) {
             int v;
 
-            v += ((int)((unsigned char)rfio->getbyte())) << 8;
-            v  = ((int)((unsigned char)rfio->getbyte()));
+            v  = ((int)((unsigned char)rfio->getbyte())) << 8;
+            v += ((int)((unsigned char)rfio->getbyte()));
             if (v & 0x8000) v -= 0x10000;
 
             sample[c] = v;
