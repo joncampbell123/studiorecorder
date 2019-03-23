@@ -1179,13 +1179,44 @@ public:
 SRFChannel      srf_channel[MAX_CHANNELS];
 std::string     out_wav_prefix;
 
+void help(void) {
+    fprintf(stderr," -i input SRF file\n");
+}
+
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
     char *src_file = NULL;
 
-    if (argc < 2) return 1;
-    src_file = argv[1];
+    for (int i=1;i < argc;) {
+        char *a = argv[i++];
+
+        if (*a == '-') {
+            do { a++; } while (*a == '-');
+
+            if (!strcmp(a,"i")) {
+                src_file = argv[i++];
+            }
+            else if (!strcmp(a,"h")) {
+                help();
+                return 1;
+            }
+            else {
+                fprintf(stderr,"Unknown switch %s\n",a);
+                help();
+                return 1;
+            }
+        }
+        else {
+            fprintf(stderr,"Unexpected arg '%s'\n",a);
+            return 1;
+        }
+    }
+
+    if (src_file == NULL) {
+        fprintf(stderr,"Input file required\n");
+        return 1;
+    }
 
     SRFIOSourceFile *r_fileio = new SRFIOSourceFile();      // file read access
     SRFIOSourceBits *b_fileio = new SRFIOSourceBits();      // utility atop file for bitfield parsing
