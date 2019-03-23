@@ -948,7 +948,7 @@ public:
             ::write(fd,buf,2 * output_channels);
             out_count += 2 * output_channels;
 
-            if (out_count >= 0x1FFF0000) { /* try not to break the limits of .WAV (2GB limit) */
+            if (out_count >= 0x7FFF0000) { /* try not to break the limits of .WAV (2GB limit) */
                 close_wav();
                 fragment++;
                 open_wav(channel);
