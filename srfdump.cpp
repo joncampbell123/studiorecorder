@@ -1479,7 +1479,19 @@ int main(int argc,char **argv) {
 
                             if (audio) delete[] audio;
                         }
- 
+                        else if (ccn.typestr == "video") {
+                            /* need to skip video so it doesn't slow down parsing */
+                            unsigned char tmp[0x10000];
+                            DWORD c = ccn.length;
+
+                            while (c >= sizeof(tmp)) {
+                                c -= sizeof(tmp);
+                                r_fileio->getblock((char*)tmp,sizeof(tmp));
+                            }
+                            if (c > 0) {
+                                r_fileio->getblock((char*)tmp,c);
+                            }
+                        }
                     }
                 }
             }
