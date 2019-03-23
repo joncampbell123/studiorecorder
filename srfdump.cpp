@@ -231,7 +231,7 @@ typedef struct {
 	int			bendian = -1;
 } SRF1PCMAUDPARMS;
 
-void srf_v1_interpret_audio__pc(char *parms,int strlen,void *data)
+void srf_v1_interpret_audio__pc(char *parms,int /*strlen*/,void *data)
 {
 	SRF1PCMAUDPARMS *pa = (SRF1PCMAUDPARMS*)data;
 
@@ -694,7 +694,7 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSource *rfio,SRFIOSourceBits
             hdr.reset_v2();
 
             {
-                int mbc,exp,sgn,mantissal,expl,par,chnk,shh;
+                int mbc,exp/*,sgn*/,mantissal,expl,par,chnk,shh;
                 char dat[32];
 
                 mbc=0;
@@ -703,7 +703,7 @@ bool SRFReadPacketHeader(SRF_PacketHeader &hdr,SRFIOSource *rfio,SRFIOSourceBits
                     mbc++;
 
                     // read it from the stream
-                    sgn = bfio->getbits(1);				// sign (FIXME: Never USED???)
+                /*sgn = */bfio->getbits(1);				// sign (FIXME: Never USED???)
                     mantissal = bfio->getbits(8)+1;		// mantissa length
                     par = bfio->getbits(1);				// mantissa parity check
                     if (par != paritysum(1,mantissal-1)) return false;
@@ -841,7 +841,7 @@ typedef struct {
 	bool		alternate_imaadpcm;
 } SRF1IMAADPCMAUDPARMS;
 
-void srf_v1_interpret_ima_adpcm_audio__pc(char *parms,int strlen,void *data)
+void srf_v1_interpret_ima_adpcm_audio__pc(char *parms,int /*strlen*/,void *data)
 {
 	SRF1IMAADPCMAUDPARMS *pa = (SRF1IMAADPCMAUDPARMS*)data;
 
