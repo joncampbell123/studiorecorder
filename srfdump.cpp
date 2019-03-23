@@ -1068,6 +1068,9 @@ private:
         return (fd >= 0);
     }
 public:
+    void resetfrag(void) {
+        fragment = 0;
+    }
     void close_wav(void) {
         if (fd >= 0) {
             unsigned char buf[4];
@@ -1255,6 +1258,19 @@ std::string tm_to_date_prefix(struct tm &ts) {
     return ret;
 }
 
+bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
+    if (cur_t.tm_year != new_t.tm_year)
+        return true;
+    if (cur_t.tm_mon  != new_t.tm_mon)
+        return true;
+    if (cur_t.tm_mday != new_t.tm_mday)
+        return true;
+    if ((cur_t.tm_hour/3) != (new_t.tm_hour/3)) /* cut every 3 hours */
+        return true;
+
+    return false;
+}
+
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
@@ -1396,6 +1412,21 @@ int main(int argc,char **argv) {
 
                     if (SRFReadTimeString(/*&*/ts,r_fileio)) {
                         srf1_time = ts.timestamp;
+
+                        if (date_in_prefix && timestamp_valid) {
+                            struct tm new_timestamp;
+
+                            if (srf1time_to_tm(/*&*/new_timestamp,srf1_time)) {
+                                if (timestamp_change_restart(timestamp,new_timestamp)) {
+                                    timestamp = new_timestamp;
+                                    date_prefix = tm_to_date_prefix(timestamp);
+                                    for (auto &ch : srf_channel) {
+                                        ch.close_wav();
+                                        ch.resetfrag();
+                                    }
+                                }
+                            }
+                        }
 
                         /* SRF-I timestamp is just an ASCIIZ string.
                          * The Studio Recorder software at the time always used 'HH:MM:SS  MM-DD-YYYY'
