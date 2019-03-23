@@ -1020,15 +1020,17 @@ private:
     unsigned long               out_count = 0;
     unsigned int                fragment = 0;
     unsigned int                channel = 0;
+    std::string                 wav_prefix;
 private:
     int                         fd = -1;
 public:
-    bool open_wav(const unsigned int n) {
+    bool open_wav(const std::string &prefix,const unsigned int n) {
         char tmp[64];
 
         channel = n;
+        wav_prefix = prefix;
 
-        sprintf(tmp,"channel%ufrag%u.wav",n,fragment);
+        sprintf(tmp,"%s_ch%u_f%u.wav",prefix.c_str(),n,fragment);
         return open_wav(tmp);
     }
 private:
@@ -1122,7 +1124,7 @@ public:
             if (out_count >= 0x7FFF0000) { /* try not to break the limits of .WAV (2GB limit) */
                 close_wav();
                 fragment++;
-                open_wav(channel);
+                open_wav(wav_prefix,channel);
             }
         }
     }
@@ -1175,17 +1177,33 @@ public:
 #define MAX_CHANNELS 64
 
 SRFChannel      srf_channel[MAX_CHANNELS];
+std::string     out_wav_prefix;
 
 int main(int argc,char **argv) {
     SRF2_TimeCode srf2_time(SRF2_TimeCode::TC_TIME);
     SRF2_TimeCode srf2_rectime(SRF2_TimeCode::TC_RECTIME);
+    char *src_file = NULL;
 
     if (argc < 2) return 1;
+    src_file = argv[1];
 
     SRFIOSourceFile *r_fileio = new SRFIOSourceFile();      // file read access
     SRFIOSourceBits *b_fileio = new SRFIOSourceBits();      // utility atop file for bitfield parsing
 
-    if (!r_fileio->open(argv[1])) {
+    if (out_wav_prefix.empty()) {
+        char *s = strrchr(src_file,PATH_SEPARATOR);
+        if (s != NULL && *s != 0) {
+            s++;
+            char *e = strrchr(s,'.');
+            if (e == NULL) e = s+strlen(s);
+            if (s < e) out_wav_prefix = std::string(s,(size_t)(e-s));
+        }
+    }
+    if (out_wav_prefix.empty()) {
+        out_wav_prefix = "untitled";
+    }
+
+    if (!r_fileio->open(src_file)) {
         fprintf(stderr,"Unable to open file\n");
         return 1;
     }
@@ -1236,7 +1254,7 @@ int main(int argc,char **argv) {
 
                             if (SRFAudioDecode(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
                                 if (ccn.channel_num < MAX_CHANNELS) {
-                                    srf_channel[ccn.channel_num].open_wav(ccn.channel_num);
+                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix,ccn.channel_num);
                                     srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
                                 }
                             }
@@ -1251,7 +1269,7 @@ int main(int argc,char **argv) {
 
                             if (SRFAudioDecodeIMAADPCM(/*&*/audio,/*&*/audio_length,/*&*/audio_channels,/*&*/audio_rate,ccn,r_fileio)) {
                                 if (ccn.channel_num < MAX_CHANNELS) {
-                                    srf_channel[ccn.channel_num].open_wav(ccn.channel_num);
+                                    srf_channel[ccn.channel_num].open_wav(out_wav_prefix,ccn.channel_num);
                                     srf_channel[ccn.channel_num].write(audio,audio_length,audio_channels,audio_rate);
                                 }
                             }

@@ -21,7 +21,10 @@
 //#include <mmsystem.h>
 //#include "resource.h"
 
-#ifndef WIN32
+#ifdef WIN32
+# define PATH_SEPARATOR '\\'
+#else
+# define PATH_SEPARATOR '/'
 # define strcmpi strcasecmp
 # define strnicmp strncasecmp
 # include <stdint.h>
