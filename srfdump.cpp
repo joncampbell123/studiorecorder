@@ -912,37 +912,20 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
                 bit_scn = rfio->getbyte();
 
                 /* L channel, then R channel */
-                if (pcmparms.alternate_imaadpcm) {
-                    for (unsigned int c=0;c < 2;c++) {
-                        code = bit_scn&0x7;
-                        delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
-                        if (bit_scn&0x8)            sample[c] -= delta;
-                        else                        sample[c] += delta;
-                        if (sample[c] < -32768)     sample[c] = -32768;
-                        if (sample[c] >  32767)     sample[c] =  32767;
-                        bit_scn >>= 4;
-                        idx[c] += imaadpcm_index_adj[code];
-                        if (idx[c] < 0) idx[c]=0;
-                        if (idx[c] > 88) idx[c]=88;
+                for (unsigned int c=0;c < 2;c++) {
+                    code = bit_scn&0x7;
+                    if (pcmparms.alternate_imaadpcm) delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
+                    else delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
+                    if (bit_scn&0x8) delta = -delta;
+                    sample[c] += delta;
+                    if (sample[c] < -32768)     sample[c] = -32768;
+                    if (sample[c] >  32767)     sample[c] =  32767;
+                    bit_scn >>= 4;
+                    idx[c] += imaadpcm_index_adj[code];
+                    if (idx[c] < 0) idx[c]=0;
+                    if (idx[c] > 88) idx[c]=88;
 
-                        *d++ = (int16_t)sample[c];
-                    }
-                }
-                else {
-                    for (unsigned int c=0;c < 2;c++) {
-                        code = bit_scn&0x7;
-					    delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
-                        if (bit_scn&0x8)            sample[c] -= delta;
-                        else                        sample[c] += delta;
-                        if (sample[c] < -32768)     sample[c] = -32768;
-                        if (sample[c] >  32767)     sample[c] =  32767;
-                        bit_scn >>= 4;
-                        idx[c] += imaadpcm_index_adj[code];
-                        if (idx[c] < 0) idx[c]=0;
-                        if (idx[c] > 88) idx[c]=88;
-
-                        *d++ = (int16_t)sample[c];
-                    }
+                    *d++ = (int16_t)sample[c];
                 }
             }
         }
@@ -951,41 +934,22 @@ bool SRFAudioDecodeIMAADPCM(int16_t* &audio,uint32_t &audio_length,uint32_t &aud
                 bit_scn = rfio->getbyte();
 
                 /* L channel, then R channel */
-                if (pcmparms.alternate_imaadpcm) {
-                    for (unsigned int c2=0;c2 < 2;c2++) {
-                        const unsigned int c = 0;
+                for (unsigned int c2=0;c2 < 2;c2++) {
+                    const unsigned int c = 0;
 
-                        code = bit_scn&0x7;
-                        delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
-                        if (bit_scn&0x8)            sample[c] -= delta;
-                        else                        sample[c] += delta;
-                        if (sample[c] < -32768)     sample[c] = -32768;
-                        if (sample[c] >  32767)     sample[c] =  32767;
-                        bit_scn >>= 4;
-                        idx[c] += imaadpcm_index_adj[code];
-                        if (idx[c] < 0) idx[c]=0;
-                        if (idx[c] > 88) idx[c]=88;
+                    code = bit_scn&0x7;
+                    if (pcmparms.alternate_imaadpcm) delta = ((imaadpcm_step_table[idx[c]]*code)+2)>>2;
+                    else delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
+                    if (bit_scn&0x8) delta = -delta;
+                    sample[c] += delta;
+                    if (sample[c] < -32768)     sample[c] = -32768;
+                    if (sample[c] >  32767)     sample[c] =  32767;
+                    bit_scn >>= 4;
+                    idx[c] += imaadpcm_index_adj[code];
+                    if (idx[c] < 0) idx[c]=0;
+                    if (idx[c] > 88) idx[c]=88;
 
-                        *d++ = (int16_t)sample[c];
-                    }
-                }
-                else {
-                    for (unsigned int c2=0;c2 < 2;c2++) {
-                        const unsigned int c = 0;
-
-                        code = bit_scn&0x7;
-					    delta = (int)(((imaadpcm_step_table[idx[c]]*code) / 4) + (imaadpcm_step_table[idx[c]] / 8));
-                        if (bit_scn&0x8)            sample[c] -= delta;
-                        else                        sample[c] += delta;
-                        if (sample[c] < -32768)     sample[c] = -32768;
-                        if (sample[c] >  32767)     sample[c] =  32767;
-                        bit_scn >>= 4;
-                        idx[c] += imaadpcm_index_adj[code];
-                        if (idx[c] < 0) idx[c]=0;
-                        if (idx[c] > 88) idx[c]=88;
-
-                        *d++ = (int16_t)sample[c];
-                    }
+                    *d++ = (int16_t)sample[c];
                 }
             }
         }
