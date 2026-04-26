@@ -38,6 +38,7 @@ enum {
 
 #define SRF1_TIMESTRING                 "TimeString"
 #define SRF1_CHANNELCONTENT             "ChannelContent"
+#define SRF1_TIMESLOTBEGIN              "TimeSlotBegin"
 
 typedef struct {
 	char			name[512] = {0};
@@ -975,6 +976,9 @@ public:
     ~SRFChannel() { close_wav(); }
     SRFChannel(const SRFChannel &x) = delete;
     SRFChannel(const SRFChannel &&x) = delete;
+public:
+    unsigned long               buf_count = 0; // SRFPlay buffer simulation
+    unsigned long               imm_count = 0;
 private:
     unsigned int                output_rate = 48000;
     unsigned int                output_channels = 2;
@@ -982,12 +986,29 @@ private:
     int16_t                     next_sample[2] = {0,0};
     unsigned int                frac = 0;                   // frac / output_rate for interpolation
     unsigned long               out_count = 0;
+    unsigned long               samp_count = 0;
+    unsigned long               padto_count = 0;
     unsigned int                fragment = 0;
     unsigned int                channel = 0;
     std::string                 wav_prefix;
 private:
     int                         fd = -1;
 public:
+    unsigned long get_output_rate(void) const {
+        return output_rate;
+    }
+    unsigned long get_sample_count(void) const {
+        return samp_count;
+    }
+    unsigned long get_padto(void) const {
+        return padto_count;
+    }
+    void set_padto(const unsigned long count) {
+        padto_count = count;
+    }
+    bool is_wav_open(void) const {
+        return (fd >= 0);
+    }
     bool open_wav(const std::string &prefix,const unsigned int n) {
         char tmp[64];
 
@@ -1004,6 +1025,9 @@ private:
             if (fd < 0) return false;
 
             out_count = 0;
+            imm_count = 0;
+            buf_count = 0;
+            samp_count = 0;
 
             unsigned char hdr[44];
 
@@ -1087,6 +1111,9 @@ public:
             assert(d <= (buf+sizeof(buf)));
             ::write(fd,buf,2 * output_channels);
             out_count += 2 * output_channels;
+            samp_count++;
+            buf_count++;
+            imm_count++;
 
             if (out_count >= 0x7FFF0000) { /* try not to break the limits of .WAV (2GB limit) */
                 close_wav();
@@ -1122,6 +1149,13 @@ public:
 
         if (src_rate <= 0)
             return 0;
+
+        if (padto_count != 0ul) {
+            int16_t zero[2] = {0,0};
+            while (samp_count < padto_count) write_dst_sample(zero);
+            padto_count = 0ul;
+            frac = 0;
+        }
 
         assert(src_channels <= 2);
         assert(output_channels <= 2);
@@ -1233,6 +1267,51 @@ bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
         return true;
 
     return false;
+}
+
+void SRF_TimeSlotBegin() {
+    /* if any channel has more than 2 seconds, then subtract additional
+     * buffer based on the amount past 2 seconds, which will also be the
+     * primary synchronization here. Crude, but that's also kind of how
+     * SRFPlay did it.
+     *
+     * Also compute where audio is padded to when a drained buffer is
+     * un-drained.
+     *
+     * SRF files, especially early files from summer 2000, have no sense
+     * of audio synchronization and tend to just send whatever comes in
+     * from the audio source right into the SRF file. This is the only
+     * sane way to handle it and keep some sort of rough synchronization. */
+    unsigned long max_count = 0;
+    unsigned long bufex = 0;
+
+    for (unsigned int c=0;c < MAX_CHANNELS;c++) {
+        SRFChannel &ch = srf_channel[c];
+        const unsigned long bufmax = ch.get_output_rate() * 2ul;
+        if (ch.buf_count > bufmax) {
+            const unsigned long ex = ch.buf_count - bufmax;
+            if (bufex < ex) bufex = ex;
+            ch.buf_count = bufmax;
+        }
+        if (max_count < ch.get_sample_count())
+            max_count = ch.get_sample_count();
+    }
+
+    for (unsigned int c=0;c < MAX_CHANNELS;c++) {
+        SRFChannel &ch = srf_channel[c];
+        if (ch.buf_count == 0) { /* buffer underrun */
+            if (ch.is_wav_open() && ch.get_padto() == 0) printf("Channel %u buffer underrun\n",c);
+            ch.set_padto(max_count);
+        }
+
+        if (ch.buf_count >= bufex)
+            ch.buf_count -= bufex;
+        else
+            ch.buf_count = 0;
+
+        /* TODO: Do something with imm_count */
+        ch.imm_count = 0;
+    }
 }
 
 int main(int argc,char **argv) {
@@ -1457,6 +1536,9 @@ int main(int argc,char **argv) {
                             }
                         }
                     }
+                }
+                else if (!strcasecmp(hdr.srf1_header.c_str(),SRF1_TIMESLOTBEGIN)) {
+                    SRF_TimeSlotBegin();
                 }
             }
             else if (hdr.type == SRF2_PACKET) {
