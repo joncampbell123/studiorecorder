@@ -1270,6 +1270,7 @@ bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
 }
 
 void SRF_TimeSlotBegin() {
+    /* TODO: Add an option to disable this time sync stuff */
     /* if any channel has more than 3 seconds, then subtract additional
      * buffer based on the amount past 3 seconds, which will also be the
      * primary synchronization here. Crude, but that's also kind of how
