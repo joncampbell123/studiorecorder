@@ -1281,7 +1281,8 @@ void SRF_TimeSlotBegin() {
      * SRF files, especially early files from summer 2000, have no sense
      * of audio synchronization and tend to just send whatever comes in
      * from the audio source right into the SRF file. This is the only
-     * sane way to handle it and keep some sort of rough synchronization. */
+     * sane way to handle it and keep some sort of rough synchronization.
+     * This is the sort of lazy shit programmer I used to be back then. */
     unsigned long max_count = 0;
     unsigned long bufex = 0;
 
