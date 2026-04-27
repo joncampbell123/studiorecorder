@@ -1,0 +1,17 @@
+Weird bugs:
+
+- Audio pops and crackles for the first 60 seconds if srfdump is run with
+  stdout redirected to a file or piped to another program... sometimes.
+
+  Example:
+
+  srfdump -i something.srf >x
+
+  srfdump -i something.srf | tee x
+
+- Unable to auto determine output WAV file if run directly on a mounted
+  NTFS filesytem.
+
+- Very slow performance on anything other than ext4, because each INDIVIDUAL
+  sample is written using write() to disk.
+
