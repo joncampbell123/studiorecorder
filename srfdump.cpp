@@ -1270,50 +1270,53 @@ bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
 }
 
 void SRF_TimeSlotBegin() {
-    /* TODO: Add an option to disable this time sync stuff */
-    /* if any channel has more than 3 seconds, then subtract additional
-     * buffer based on the amount past 3 seconds, which will also be the
-     * primary synchronization here. Crude, but that's also kind of how
-     * SRFPlay did it.
-     *
-     * Also compute where audio is padded to when a drained buffer is
-     * un-drained.
-     *
-     * SRF files, especially early files from summer 2000, have no sense
-     * of audio synchronization and tend to just send whatever comes in
-     * from the audio source right into the SRF file. This is the only
-     * sane way to handle it and keep some sort of rough synchronization.
-     * This is the sort of lazy shit programmer I used to be back then. */
-    unsigned long max_count = 0;
-    unsigned long bufex = 0;
+	/* THIS CODE MAKES THE SUMMER 2000 SHOW *WORSE* */
+	if (false) {
+		/* TODO: Add an option to disable this time sync stuff */
+		/* if any channel has more than 3 seconds, then subtract additional
+		 * buffer based on the amount past 3 seconds, which will also be the
+		 * primary synchronization here. Crude, but that's also kind of how
+		 * SRFPlay did it.
+		 *
+		 * Also compute where audio is padded to when a drained buffer is
+		 * un-drained.
+		 *
+		 * SRF files, especially early files from summer 2000, have no sense
+		 * of audio synchronization and tend to just send whatever comes in
+		 * from the audio source right into the SRF file. This is the only
+		 * sane way to handle it and keep some sort of rough synchronization.
+		 * This is the sort of lazy shit programmer I used to be back then. */
+		unsigned long max_count = 0;
+		unsigned long bufex = 0;
 
-    for (unsigned int c=0;c < MAX_CHANNELS;c++) {
-        SRFChannel &ch = srf_channel[c];
-        const unsigned long bufmax = ch.get_output_rate() * 3ul;
-        if (ch.buf_count > bufmax) {
-            const unsigned long ex = ch.buf_count - bufmax;
-            if (bufex < ex) bufex = ex;
-            ch.buf_count = bufmax;
-        }
-        if (max_count < ch.get_sample_count())
-            max_count = ch.get_sample_count();
-    }
+		for (unsigned int c=0;c < MAX_CHANNELS;c++) {
+			SRFChannel &ch = srf_channel[c];
+			const unsigned long bufmax = ch.get_output_rate() * 3ul;
+			if (ch.buf_count > bufmax) {
+				const unsigned long ex = ch.buf_count - bufmax;
+				if (bufex < ex) bufex = ex;
+				ch.buf_count = bufmax;
+			}
+			if (max_count < ch.get_sample_count())
+				max_count = ch.get_sample_count();
+		}
 
-    for (unsigned int c=0;c < MAX_CHANNELS;c++) {
-        SRFChannel &ch = srf_channel[c];
-        if (ch.buf_count == 0) { /* buffer underrun */
-            if (ch.is_wav_open() && ch.get_padto() == 0) printf("Channel %u buffer underrun\n",c);
-            ch.set_padto(max_count);
-        }
+		for (unsigned int c=0;c < MAX_CHANNELS;c++) {
+			SRFChannel &ch = srf_channel[c];
+			if (ch.buf_count == 0) { /* buffer underrun */
+				if (ch.is_wav_open() && ch.get_padto() == 0) printf("Channel %u buffer underrun\n",c);
+				ch.set_padto(max_count);
+			}
 
-        if (ch.buf_count >= bufex)
-            ch.buf_count -= bufex;
-        else
-            ch.buf_count = 0;
+			if (ch.buf_count >= bufex)
+				ch.buf_count -= bufex;
+			else
+				ch.buf_count = 0;
 
-        /* TODO: Do something with imm_count */
-        ch.imm_count = 0;
-    }
+			/* TODO: Do something with imm_count */
+			ch.imm_count = 0;
+		}
+	}
 }
 
 int main(int argc,char **argv) {
