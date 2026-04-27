@@ -1270,8 +1270,8 @@ bool timestamp_change_restart(struct tm &cur_t,struct tm &new_t) {
 }
 
 void SRF_TimeSlotBegin() {
-    /* if any channel has more than 5 seconds, then subtract additional
-     * buffer based on the amount past 5 seconds, which will also be the
+    /* if any channel has more than 3 seconds, then subtract additional
+     * buffer based on the amount past 3 seconds, which will also be the
      * primary synchronization here. Crude, but that's also kind of how
      * SRFPlay did it.
      *
@@ -1288,7 +1288,7 @@ void SRF_TimeSlotBegin() {
 
     for (unsigned int c=0;c < MAX_CHANNELS;c++) {
         SRFChannel &ch = srf_channel[c];
-        const unsigned long bufmax = ch.get_output_rate() * 5ul;
+        const unsigned long bufmax = ch.get_output_rate() * 3ul;
         if (ch.buf_count > bufmax) {
             const unsigned long ex = ch.buf_count - bufmax;
             if (bufex < ex) bufex = ex;
